@@ -1,0 +1,206 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+p is number of predictors(including intercept)
+
+cleaning/preprocessing
+```{r}
+######NA values
+hitters<-na.omit(hitters) #drop any rows that has NA
+wine_narm<-wine[!is.na(wine$LPRICE),]
+
+auto1 <- subset(auto, select= -c(name))
+
+
+######sample
+library(caTools)
+set.seed(1)
+split <- sample.split(framing1$TENCHD,SplitRatio=0.65)
+training <- subset(framing1,split==TRUE)
+test <- subset(framing1,split==FALSE)
+
+
+set.seed(1)
+trainid <- sample(1:nrow(College),0.8*nrow(College))
+testid <- -trainid
+train<- College[trainid,]
+test<- College[testid,]
+```
+
+
+linear regression
+```{r}
+m6 <- lm(RS~OBP+SLG+BA,data=baseball2002)
+modelpoly2 <- lm(medv~poly(lstat,2,raw=TRUE), data = boston)
+lm(formula = log(price91) ~ temp + hrain + wrain + tempdiff + age91, data = train)
+
+pr1 <- predict(model13,newdata=boston)
+pr5 <- predict(modelpoly5,newdata=boston)
+plot(boston$lstat,boston$medv)
+points(boston$lstat,pr1,col="red")
+points(boston$lstat,pr5,col="blue")
+
+model1 <- lm(Temp~MEI+CO2+CH4+N2O+CFC.11+CFC.12+TSI+Aerosols, data = training)
+model3 <- step(model1)
+
+pred <- predict(model3, newdata = test)
+sse <- sum((test$Temp-pred)^2)
+sst <- sum((test$Temp-mean(training$Temp))^2)
+testR2 <- 1-sse/sst
+
+confint(model1, level = 0.99)
+
+```
+
+logistic regression/auc
+```{r}
+model3 <- glm(Field~Temp+Pres,data=orings,family=binomial)
+predict(model4,newdata=orings[144,],type="response") #response is the probability, if 'link', gives e^(beta*x)
+table(Pred[1:138]>0.5,orings$Field[1:138]) #set the threshold by this
+
+
+######AUC
+library(ROCR)
+ROCRpred <- prediction(Pred[1:138],orings$Field[1:138])
+performance(ROCRpred,measure="auc") #may try @y.values
+
+ROCRperf <- performance(ROCRpred,x.measure="fpr",measure="tpr") 
+plot(ROCRperf)
+
+
+######Get the threshold
+sortpred2 <- sort(pred2,decreasing=TRUE,index.return=TRUE)
+profitpred2 <- 100*test$resp[sortpred2$ix] -300*(1-test$resp[sortpred2$ix]) #specity a value for correct and wrong. (100,-300) in this case
+cumulative <- cumsum(profitpred2)
+sortpred2$x[which.max(cumulative)]
+
+
+
+
+```
+
+step
+```{r}
+library(leaps)
+?regsubsets
+model2<-regsubsets(Salary~.,hitters,nvmax=19) 
+model3<-regsubsets(Salary~.,data=hitters,nvmax=19,method="forward")
+
+names(summary(model2))
+summary(model2)$rsq
+plot(summary(model2)$rsq)
+plot(summary(model2)$rss)
+plot(summary(model2)$adjr2)
+which.max(summary(model2)$adjr2) ##choose the best
+coef(model2,11)
+```
+
+
+lasso
+```{r}
+
+X <- model.matrix(Salary~.,hitters)
+y <- hitters$Salary
+
+grid<-10^seq(10,-2, length=100) # 10, 9.9, 9.8 something like this
+set.seed(1)
+train <- sample(1:nrow(X),nrow(X)/2)
+test <- -train
+modellasso <- glmnet(X[train,],y[train],lambda=grid)
+summary(modellasso)
+modellasso #the %deviance is not important here
+deviance(modellasso)
+plot(modellasso,xvar="lambda",label=TRUE)
+
+#predict with lambda=50 the second method recalculate the model
+predictlasso2 <- predict(modellasso,newx=X[test,],s=50)
+mean((predictlasso2-y[test])^2)
+predictlasso2a <- predict(modellasso,newx=X[test,],s=50,exact=T,x=X[train,],y=y[train])
+mean((predictlasso2a-y[test])^2)
+model3$beta["EquipInv",]#beta for the variable "EqupInv"
+predictlassocv <- predict(modellasso,s=22.18,newx=X[test,])
+mean((predictlassocv-y[test])^2)
+coef(modellasso,s=22.18)
+
+
+
+
+#k-fold 
+set.seed(2)
+#cvmodel4<-cv.glmnet(x[trainid,],y[trainid],nfolds=10,lambda=grid)
+cvlasso <- cv.glmnet(X[train,],y[train])
+cvlasso$glmnet.fit 
+cvlasso$lambda.min  ##choose the best
+# You can plot the lambda parameter with the cross-validated mean error (cvm).
+plot(cvlasso$lambda,cvlasso$cvm)
+coef(cvlasso,s=cvlasso$lambda.min) #get the coefficients for a certain lambda
+
+
+```
+
+plot
+```{r}
+hist(faithful$eruptions,seq(1.6,5.2,0.2))  #give center points
+plot(faithful$eruptions)
+plot(faithful$eruptions,type="l") 
+qqnorm(faithful$eruptions)
+boxplot(faithful$eruptions)
+
+
+plot(baseball2002$W,baseball2002$Team,col=ifelse(baseball2002$Playoffs==1,"red","black"))
+axis(1,at=seq(60,120,by=5))  #this only sets the x axis from 50 to 120
+abline(v=95) # add a vertical line at x=95
+
+plot(x, y, main = "Coefficient relationship", xlab = "Simple linear regression", lab = "Multiple linear regression")
+
+
+######linear regression
+plot(baseball2002$RS-baseball2002$RA,baseball2002$W)
+abline(model1)
+
+plot(jitter(orings$Temp),orings$Field)
+abline(model2) 
+
+
+######logistic regression
+plot(jitter(orings$Temp),orings$Field)
+curve(exp(6.75-0.139*x)/(1+exp(6.75-0.139*x)),add=T) #x is a symbol, not a data
+
+```
+
+
+ggplot
+```{r}
+# tile plot
+ggplot(WeekdayHourCounts,aes(x=Var2,y=Var1)) + geom_tile(aes(fill=Freq))+xlab("Hour of the day")+scale_fill_gradient(low="white",high="red")
+
+#histogram
+ggplot(data = Parole, aes(x = TimeServed,fill=Crime))+ geom_histogram(binwidth=1,center=0.5,closed="right",position="identity",alpha=0.5) #if stack not overlay, delete position
+
+#facet
+ggplot(data = Parole, aes(x = Age)) + geom_histogram(binwidth=5,closed=c("left"),center=17.5,
+color=c("blue"))+facet_grid(.~Male)
+
+```
+
+
+Star plot
+```{r}
+stars(as.matrix(swiss[,c(2,3,5,6)]), location = as.matrix(swiss[,c(4,1)]), axes = T, labels = NULL,len = 3, main = "Fertility against Education", xlab = "Education", ylab = "Fertility",draw.segments = TRUE,key.loc = c(80,35))
+```
+
+
+Statisticalt-test
+```{r}
+t.test(wine$DEGREES)
+t.test(subset(wine,wine$VINT<1973)$DEGREES,subset(wine,wine$VINT>=1973)$DEGREES)
+```
+
+
+```{r}
+length(unique(framing1$RANDID))
+cor(training)
+baseballlarge$NumCompetitors <- table(baseballlarge$Year)[as.character(baseballlarge$Year)]
+cor(auto$mpg,auto$horsepower, use = "pairwise.complete.obs")^2
+```

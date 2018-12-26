@@ -1,0 +1,263 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Matrix
+```{r}
+x = matrix(c(3,-1,2,-1),nrow = 2,ncol = 2)
+#     [,1] [,2]   
+#[1,]   6    4
+#[2,]  -2   -2
+# '*' element-wise multiplication
+# '%*%' matrix multiplication
+```
+
+Subset
+```{r}
+subset(Q6_data, Q6_data$Internet.Use == 1|Q6_data$Smartphone == 1)
+```
+
+Train Test Split
+```{r}
+library(caTools)
+set.seed(2000)
+spl <- sample.split(data$over50k, SplitRatio = 0.6)
+train <- subset(data, spl==TRUE)
+test <- subset(data, spl==FALSE)
+```
+
+Logistic Regression
+```{r}
+model1 <- glm(Neg~.,data=train,family=binomial)
+predict1 <- predict(model1,newdata=test,type="response")
+```
+
+CART
+```{r}
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(RColorBrewer)
+# Regression
+cart1 <- rpart(over50k ~., data=train)
+# Classification
+cart2 <- rpart(over50k ~., data=train, method = 'class')
+prp(cart1) 
+prp(cart1,type=1) # labels all nodes (not just the leaves)
+prp(cart1,type=4) # draws separate labels for leaf and right directions for all nodes and label nodes
+prp(cart1,type=4,extra=4) # in addition, this also plots the probability per class of observation
+fancyRpartPlot(cart1)
+# Prediction
+predictcart1 <- predict(cart1,newdata=test,type="class")
+# Pruning
+plotcp(cart1)
+opt <- which.min(cart1$cptable[,"xerror"]) ## find the smallest xerror
+cp <- cart1$cptable[opt, "CP"] # 0.03589744
+cart2 <- prune(cart1,cp=0.035897)
+# Prepruning
+cart3 <- rpart(rev~.,method="class",
+               maxdepth= 30, 
+               minbucket = 20)
+
+# MSE
+mse1 <- mean((pred - test$medv)^2)
+```
+
+Random Forest
+```{r}
+library(randomForest)
+forest <- randomForest(rev~.,nodesize=5,ntree=250,type='class')
+# The prediction is carried out through majority vote (across all trees)
+predictforest <- predict(forest,newdata=test,type="class")
+```
+
+Naive Bayes
+```{r}
+library(e1071)
+# Build model: computes the conditional a-posterior probabilities of a categorical class variable 
+# given independent predictor variables using the Bayes rule.
+model3 <- naiveBayes(as.factor(responsive)~.,data=train)
+summary(model3)
+#
+model3$apriori
+# Y
+# 0   1 
+# 500  96 
+#
+# List tables for each predictor. For each numeric variable, it gives target class, mean and standard deviation.
+model3$tables
+# Prediction
+predict3 <- predict(model3,newdata=test,type="class")
+table(predict3,test$responsive)
+```
+
+Text Sentiment Analysis Pre processing
+```{r}
+# Load the tm package.
+library(tm)
+library(SnowballC)
+# Build a new corpus variable called corpus.
+corpus <- Corpus(VectorSource(emails$text))
+# Using tm map, convert the text to lowercase.
+corpus <- tm_map(corpus, content_transformer(tolower))
+# Using tm map, remove all punctuation from the corpus.
+corpus <- tm_map(corpus, removePunctuation)
+# Using tm map, remove all English stopwords from the corpus.
+corpus <- tm_map(corpus, removeWords, stopwords("english"))
+# Remove some words
+corpus <- tm_map(corpus,removeWords,c("drive","driving","driver","self-driving","car","cars"))
+# Using tm map, stem the words in the corpus.
+corpus <- tm_map(corpus, stemDocument)
+# Build a document term matrix from the corpus, called dtm
+dtm <- DocumentTermMatrix(corpus)
+
+# With this function, we find term appearing with frequency lower than 50%
+findFreqTerms(dtm,lowfreq=50) # 50%
+# We can also check the frequency of specific words
+dtm[,"accid"]
+# In this specific case, we remove all terms with at least 99.5% empty entries
+dtm <- removeSparseTerms(dtm,0.995)
+
+# We transform the term-document matrix into a matrix and, then, into a dataframe
+twittersparse <- as.data.frame(as.matrix(dtm))
+# This helps ensure that columns have valid names. 
+# For example, names starting with numbers are modified (e.g., 300k -> X300k).
+colnames(twittersparse) <- make.names(colnames(twittersparse))
+# Most frequently appeared word
+which.max(colSums(twittersparse))
+
+# Get word counts in decreasing order
+word_freqs = sort(colSums(twittersparse), decreasing=TRUE)
+# Create data frame with words and their frequencies
+dm = data.frame(word=names(word_freqs), freq=unname(word_freqs))
+
+# Last step, we add the output variable (polarity of tweets) to the twittersparse dataframe
+twittersparse$Neg <- twitter$Neg
+
+### Training and prediction...
+```
+
+k-means clustering
+```{r}
+km <- kmeans(Data[,1:19],centers=10)
+
+library(flexclust)
+km.kcca <- as.kcca(km, normTrain)
+clusterTrain <- predict(km.kcca)
+clusterTest <- predict(km.kcca, newdata = normTest)
+```
+
+Hierarchical clustering
+```{r}
+# With the function dist, we calculate the distance 
+# between movies using the first 19 columns (genres of movies)
+distances <- dist(Data[,1:19], method="euclidean")
+
+# Execute hierarchical clustering. We use Ward's distance method to find compact clusters.
+clusterMovies1 <- hclust(distances, method="ward.D2")
+# Plots the dendrogram. We have several movies, so the lists at the bottom cannot be read
+plot(clusterMovies1)
+
+# Let's then cut the dendrogram into 10 clusters
+clusterGroups1 <- cutree(clusterMovies1, k=10)
+# Compute the average value across the clusters for the Action variable. 
+# Higher value indicates many movies in the clusters are action movies.
+tapply(Data[,1], clusterGroups1, mean) 
+
+# Create a matrix "Cat1" where rows denote categories and columns indicate clusters
+Cat1 <- matrix(0,nrow=19,ncol=10)
+for(i in 1:19)
+{Cat1[i,] <- tapply(Data[,i], clusterGroups1, mean)}
+rownames(Cat1) <- colnames(Data)[1:19]
+Cat1
+# Looking at Cat1, we can infer that the 10 clusters are organized as follows:
+# Cluster 1: Fantasy, Comedy, Children, Adventure
+# Cluster 2: Romance, Comedy, Drama
+# Cluster 3: Comedy, Drama
+# Cluster 4: Drammar, Thriller, Crime
+# Cluster 5: Sci-fi, Adventure, Action
+# Cluster 6: Horror, Thriller
+# Cluster 7: Drama
+# Cluster 8: Romance, Drama
+# Cluster 9: Documentary
+# Cluster 10: War, Drama, Action
+
+# Let's take a look at various movies
+# subset(Data$title, clusterGroups1==6)
+subset(Data, movies$title=="Grand Budapest Hotel, The (2014)")
+clusterGroups1[8418]
+subset(Data, movies$title=="Moneyball (2011)")
+clusterGroups1[7925]
+subset(Data, movies$title=="X-Men: First Class (2011)")
+clusterGroups1[7849]
+```
+
+SVD
+```{r}
+s <- svd(X)
+X_hat <- s$u[,1:2] %*% diag(s$d[1:2]) %*% t(s$v[,1:2])
+
+# Calculate the explained variance
+var <- cumsum(s$d^2)
+str(var)
+plot(1:4,var/max(var))
+
+# RGB
+s1 <- svd(pansy[,,1])
+s2 <- svd(pansy[,,2])
+s3 <- svd(pansy[,,3])
+#
+# initialize the vector for storing the approximation
+pansy50 <- array(dim=c(600,465,3))
+pansy50[,,1] <- s1$u[,1:50]%*%diag(s1$d[1:50])%*%t(s1$v[,1:50])
+pansy50[,,2] <- s2$u[,1:50]%*%diag(s2$d[1:50])%*%t(s2$v[,1:50])
+pansy50[,,3] <- s3$u[,1:50]%*%diag(s3$d[1:50])%*%t(s3$v[,1:50])
+```
+
+Survival
+```{r}
+model1 <- survreg(Surv(time_in_affairs,time_in_affairs>0,type="left")~.,data=train,dist="gaussian")
+predict1 <- predict(model1,newdata=test) # Prediction provides the latent predicted values of the variables (positive and negative)
+
+km <- survfit(Surv(start,stop,event)~1,data=heart)
+```
+
+Cox proportional hazard model
+```{r}
+cox <- coxph(Surv(start,stop,event)~age+surgery+transplant,data=heart)
+```
+
+Others
+```{r}
+# cosine similarity
+cosine <- matrix(0,9,1)
+for(i in 1:9){
++ cosine[i] <- sum(hatq*m$v[i,1:2])/sqrt(sum(hatq^2)*sum(m$v[i,1:2]^2)) +}
+```
+
+
+
+Confusion matrix (accuracy)
+```{r}
+table1 <- table(test$over50k, pred >=0.5)
+sum(diag(table1))/sum(table1)
+```
+
+ROC
+```{r}
+predrocr <- prediction(pred[,2], test$Violator)
+perf <- performance(predrocr, x.measure="fpr",measure="tpr") # calculate False and True Positive Rate (FPR and TPR)
+auc <- performance(predrocr, measure = "auc")@y.values
+auc
+```
+
+
+
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
